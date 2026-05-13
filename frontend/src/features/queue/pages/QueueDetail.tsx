@@ -535,7 +535,8 @@ export default function QueueDetail() {
   };
 
   const handleNoShowWait = async () => {
-    await Promise.all([handleLeave(), join()])
+    await handleLeave();
+    await join();
   }
 
   if (!establishment) {
