@@ -14,7 +14,10 @@ const COOLDOWN_MS = 20 * 60 * 1000;
  */
 router.post("/:queueId/:stationId/next", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const snap = await queueRef.once("value");
@@ -63,7 +66,10 @@ router.post("/:queueId/:stationId/next", verifyToken, async (req, res) => {
  */
 router.post("/:queueId/:stationId/skip", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const snap = await queueRef.once("value");
@@ -126,7 +132,10 @@ router.post("/:queueId/:stationId/skip", verifyToken, async (req, res) => {
  */
 router.post("/:queueId/:stationId/no-show", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const snap = await queueRef.once("value");
@@ -246,7 +255,10 @@ router.post(
  */
 router.post("/:queueId/:stationId/pause", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const snap = await queueRef.once("value");
@@ -379,7 +391,10 @@ router.post("/:queueId/:stationId/pause", verifyToken, async (req, res) => {
  */
 router.post("/:queueId/:stationId/resume", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const stationRef = queueRef.child(`stations/${stationId}`);
@@ -427,7 +442,10 @@ router.post(
   verifyToken,
   async (req, res) => {
     try {
-      const { queueId, stationId } = req.params;
+      const { queueId, stationId } = req.params as {
+        queueId: string;
+        stationId: string;
+      };
       const { scannedUserId } = req.body;
 
       const queueRef = dbAdmin.ref(`queues/${queueId}`);
@@ -488,7 +506,10 @@ router.post(
 
 router.post("/:queueId/:stationId/finish", verifyToken, async (req, res) => {
   try {
-    const { queueId, stationId } = req.params;
+    const { queueId, stationId } = req.params as {
+      queueId: string;
+      stationId: string;
+    };
 
     const queueRef = dbAdmin.ref(`queues/${queueId}`);
     const snap = await queueRef.once("value");
