@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# env files
+.env
+.env.*
+
+# builds
+dist/
+build/
+
+# firebase admin secret
+firebase.json
+
+# logs
+*.log
+
+# OS
+.DS_Store
