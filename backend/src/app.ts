@@ -4,6 +4,12 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth.routes";
 import establishmentRoutes from "./routes/establishment.routes";
 import { verifyToken } from "./middleware/authMiddleware";
+import adminQueueRoutes from "./routes/admin.queue.routes";
+import { cleanupNoShows } from "./jobs/noShowCleanup";
+
+setInterval(() => {
+  cleanupNoShows();
+}, 60 * 1000);
 
 dotenv.config();
 
@@ -19,5 +25,7 @@ app.get("/", (req, res) => {
 app.use("/auth", authRoutes);
 
 app.use("/establishments", verifyToken, establishmentRoutes);
+
+app.use("/admin/queues", verifyToken, adminQueueRoutes);
 
 export default app;

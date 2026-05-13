@@ -1,15 +1,29 @@
 import { useState } from "react";
 import { createEstablishment } from "@/lib/establishment";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+
+type Station = {
+  name: string;
+  service_type: "regular" | "priority";
+};
 
 export default function SetupEstablishment() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
     work_email: "",
     location: "",
     queue_capacity: 50,
+
+    stations: [
+      {
+        name: "Counter 1",
+        service_type: "regular",
+      },
+    ] as Station[],
 
     working_hours: {
       timezone: "Asia/Manila",
@@ -26,8 +40,55 @@ export default function SetupEstablishment() {
   });
 
   const handleSubmit = async () => {
-    await createEstablishment(form);
-    navigate("/admin");
+    try {
+      setLoading(true);
+      await createEstablishment(form);
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      window.location.replace("/admin");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create establishment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // -----------------------
+  // STATIONS HANDLERS
+  // -----------------------
+
+  const addStation = () => {
+    setForm((prev) => ({
+      ...prev,
+      stations: [
+        ...prev.stations,
+        {
+          name: `Counter ${prev.stations.length + 1}`,
+          service_type: "regular",
+        },
+      ],
+    }));
+  };
+
+  const removeStation = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      stations: prev.stations.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateStation = (index: number, key: keyof Station, value: any) => {
+    const updated = [...form.stations];
+    updated[index] = {
+      ...updated[index],
+      [key]: value,
+    };
+
+    setForm((prev) => ({
+      ...prev,
+      stations: updated,
+    }));
   };
 
   return (
@@ -35,6 +96,7 @@ export default function SetupEstablishment() {
       <div className="w-full max-w-lg bg-white shadow p-6 rounded-xl space-y-4">
         <h1 className="text-xl font-bold">Setup Your Establishment</h1>
 
+        {/* BASIC INFO */}
         <input
           placeholder="Establishment Name"
           className="w-full border p-2"
@@ -62,6 +124,7 @@ export default function SetupEstablishment() {
           }
         />
 
+        {/* WORKING HOURS */}
         <div className="space-y-2 border p-3 rounded-lg">
           <h2 className="font-semibold text-sm">Working Hours</h2>
 
@@ -130,11 +193,62 @@ export default function SetupEstablishment() {
           ))}
         </div>
 
+        {/* STATIONS */}
+        <div className="border p-3 rounded-lg space-y-3">
+          <div className="flex justify-between items-center">
+            <h2 className="font-semibold text-sm">Queue Stations</h2>
+
+            <button
+              type="button"
+              onClick={addStation}
+              className="text-sm px-2 py-1 bg-black text-white rounded"
+            >
+              + Add
+            </button>
+          </div>
+
+          {form.stations.map((station, index) => (
+            <div key={index} className="grid grid-cols-3 gap-2 items-center">
+              <input
+                className="border p-1 text-sm"
+                value={station.name}
+                onChange={(e) => updateStation(index, "name", e.target.value)}
+                placeholder="Station Name"
+              />
+
+              <select
+                className="border p-1 text-sm"
+                value={station.service_type}
+                onChange={(e) =>
+                  updateStation(
+                    index,
+                    "service_type",
+                    e.target.value as "regular" | "priority",
+                  )
+                }
+              >
+                <option value="regular">Regular</option>
+                <option value="priority">Priority</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => removeStation(index)}
+                className="text-xs bg-red-500 text-white px-2 py-1 rounded"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* SUBMIT */}
         <button
           onClick={handleSubmit}
+          disabled={loading}
           className="w-full bg-black text-white p-2 rounded-lg"
         >
-          Save Establishment
+          {loading ? "Saving..." : "Save Establishment"}
         </button>
       </div>
     </div>
