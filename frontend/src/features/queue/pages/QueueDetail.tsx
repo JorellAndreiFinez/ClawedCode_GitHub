@@ -7,7 +7,8 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { onValue, push, ref, runTransaction, set, update } from "firebase/database";
-import { ArrowLeft, MapPin, QrCode } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ArrowLeft, MapPin } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getCrowdInsight } from "@/lib/crowdInsight";
@@ -283,6 +284,7 @@ export default function QueueDetail() {
     Math.max(0, ...users.map((entry) => entry.ticket_number || 0)) + 1;
   const activity = useMemo(() => buildActivity(users), [users]);
   const isQueueClosed = establishment?.status !== "active";
+  const qrCheckInValue = myEntry?.qr_id || myEntry?.id || "";
 
   const handleJoin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -722,7 +724,20 @@ export default function QueueDetail() {
             <div className="mx-auto mt-9 flex aspect-square max-w-sm items-center justify-center rounded-[32px] border-[3px] border-[#1b1c1c] p-4">
               <div className="flex h-full w-full items-center justify-center rounded-[24px] border-[3px] border-[#83f9be]">
                 <div className="flex h-1/2 w-full items-center justify-center border-y-2 border-[#39b580]">
-                  <QrCode className="size-24 text-[#3d4a42]" />
+                  {qrCheckInValue ? (
+                    <QRCodeSVG
+                      value={qrCheckInValue}
+                      size={136}
+                      bgColor="transparent"
+                      fgColor="#3d4a42"
+                      level="M"
+                      marginSize={1}
+                    />
+                  ) : (
+                    <span className="text-sm font-bold text-[#858583]">
+                      QR unavailable
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
