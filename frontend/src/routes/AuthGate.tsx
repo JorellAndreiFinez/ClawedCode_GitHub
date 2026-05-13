@@ -2,12 +2,17 @@ import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth";
 
+const publicRoutes = ["/", "/logout"];
+const userRoutePrefixes = ["/dashboard", "/discover", "/queue/", "/ticket/"];
+
+function isUserRoute(pathname: string) {
+  return userRoutePrefixes.some((route) => pathname.startsWith(route));
+}
+
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
-  const publicRoutes = ["/", "/logout"];
 
   useEffect(() => {
     if (loading) return;
@@ -40,11 +45,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     // USER FLOW
     if (profile?.role === "user") {
-      if (location.pathname !== "/dashboard") {
+      if (!isUserRoute(location.pathname)) {
         navigate("/dashboard", { replace: true });
       }
     }
-  }, [user, profile, loading, location.pathname]);
+  }, [user, profile, loading, location.pathname, navigate]);
 
   return <>{children}</>;
 }
