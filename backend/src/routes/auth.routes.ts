@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { authAdmin, dbAdmin } from "../firebaseAdmin";
+import { verifyToken } from "../middleware/authMiddleware";
 
 const router = Router();
 
-// REGISTER USER (IMPORTANT)
+// REGISTER USER
 router.post("/register", async (req, res) => {
   try {
     const { email, password, fullName, role } = req.body;
@@ -12,21 +13,20 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    // 1. create auth user
     const userRecord = await authAdmin.createUser({
       email,
       password,
       displayName: fullName,
     });
 
-    // 2. store in database
     await dbAdmin.ref(`users/${userRecord.uid}`).set({
       uid: userRecord.uid,
       fullName,
       email,
-      role, // "user" | "admin" (owner)
+      role,
       establishment_completed: role === "admin" ? false : null,
       createdAt: Date.now(),
+      updated_at: Date.now(),
     });
 
     return res.json({
@@ -46,43 +46,73 @@ router.post("/logout", async (req, res) => {
   try {
     const token = req.headers.authorization?.split("Bearer ")[1];
 
-    if (!token) {
-      return res.status(401).json({ error: "No token provided" });
+    if (token) {
+      try {
+        const decoded = await authAdmin.verifyIdToken(token);
+        await authAdmin.revokeRefreshTokens(decoded.uid);
+      } catch (err) {
+        console.log("Token invalid during logout, skipping revoke");
+      }
     }
-
-    const decoded = await authAdmin.verifyIdToken(token);
-
-    // revoke refresh tokens
-    await authAdmin.revokeRefreshTokens(decoded.uid);
 
     return res.json({
       success: true,
       message: "Logged out successfully",
     });
   } catch (err) {
-    return res.status(401).json({
+    return res.status(500).json({
       error: "Logout failed",
     });
   }
 });
 
-// verify token (basic middleware-ready endpoint)
-router.get("/me", async (req, res) => {
+// GET MY ESTABLISHMENT + QUEUE
+router.get("/me", verifyToken, async (req, res) => {
   try {
-    const token = req.headers.authorization?.split("Bearer ")[1];
+    const user = (req as any).user;
 
-    if (!token) return res.status(401).json({ error: "No token" });
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    const decoded = await authAdmin.verifyIdToken(token);
+    // FIND ESTABLISHMENT
+    const snapshot = await dbAdmin
+      .ref("establishments")
+      .orderByChild("admin_id")
+      .equalTo(user.uid)
+      .once("value");
 
-    const userSnap = await dbAdmin.ref(`users/${decoded.uid}`).get();
+    const establishments = snapshot.val();
 
-    res.json({
-      uid: decoded.uid,
-      ...userSnap.val(),
+    if (!establishments) {
+      return res.status(404).json({
+        error: "No establishment found",
+      });
+    }
+
+    // GET FIRST ESTABLISHMENT
+    const establishment = Object.values(establishments)[0] as any;
+
+    // GET QUEUE
+    let queue = null;
+
+    if (establishment.queue_id) {
+      const queueSnap = await dbAdmin
+        .ref(`queues/${establishment.queue_id}`)
+        .once("value");
+
+      queue = queueSnap.val();
+    }
+
+    // MERGE RESPONSE
+    return res.json({
+      ...establishment,
+      queue,
     });
-  } catch (err) {
-    res.status(401).json({ error: "Invalid token" });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err.message || "Failed to fetch establishment",
+    });
   }
 });
 

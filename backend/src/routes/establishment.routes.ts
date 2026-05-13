@@ -3,46 +3,202 @@ import { dbAdmin } from "../firebaseAdmin";
 
 const router = Router();
 
-// CREATE ESTABLISHMENT
 router.post("/", async (req, res) => {
   try {
-    const user = req.body.user;
+    const user = (req as any).user;
 
-    const { name, work_email, location, queue_capacity, working_hours } =
-      req.body;
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    const ref = dbAdmin.ref("establishments").push();
-
-    await ref.set({
-      id: ref.key,
-      admin_id: user.uid,
+    const {
       name,
       work_email,
       location,
       queue_capacity,
-      service_time: 3,
-      status: "active",
       working_hours,
-      queue_settings: {
-        allow_remote_join: true,
-        priority_enabled: true,
-        qr_required: true,
-      },
-      analytics: {
-        total_customers: 0,
-        avg_wait_time: 0,
-      },
-      createdAt: Date.now(),
+      stations = [],
+    } = req.body;
+
+    const now = Date.now();
+
+    /**
+     * ----------------------------------------
+     * Convert stations array → object map
+     * ----------------------------------------
+     */
+    const stationsObject: Record<string, any> = {};
+
+    stations.forEach((s: any, index: number) => {
+      const stationId = `station_${index + 1}`;
+
+      stationsObject[stationId] = {
+        id: stationId,
+        name: s.name || `Station ${index + 1}`,
+        service_type: s.service_type || "regular",
+        status: "active",
+
+        // computed later, so no avg input dependency
+        avg_service_time: null,
+
+        current_session_id: null,
+        current_user_id: null,
+
+        last_called_at: null,
+        queue_ids: [],
+        created_at: now,
+      };
     });
 
-    // mark admin as completed
+    /**
+     * ----------------------------------------
+     * Create establishment
+     * ----------------------------------------
+     */
+    const estRef = dbAdmin.ref("establishments").push();
+
+    /**
+     * ----------------------------------------
+     * Create queue (1:1)
+     * ----------------------------------------
+     */
+    const queueRef = dbAdmin.ref("queues").push();
+
+    await queueRef.set({
+      id: queueRef.key,
+      establishment_id: estRef.key,
+
+      status: "active",
+
+      /**
+       * ----------------------------------------
+       * SETTINGS (CONFIG ONLY)
+       * ----------------------------------------
+       */
+      settings: {
+        average_service_time: 3,
+        cutoff_time: null,
+
+        allow_remote_join: true,
+        auto_transfer_enabled: true,
+        priority_enabled: true,
+
+        max_capacity: queue_capacity,
+
+        crowd_thresholds: {
+          low: 0.3,
+          moderate: 0.7,
+          high: 1.0,
+        },
+      },
+
+      /**
+       * ----------------------------------------
+       * STATIONS (DYNAMIC)
+       * ----------------------------------------
+       */
+      stations: stationsObject,
+
+      /**
+       * ----------------------------------------
+       * QUEUE STATE
+       * ----------------------------------------
+       */
+      queue_state: {
+        current_ticket_number: 0,
+        serving_ticket_number: null,
+
+        current_serving_user_id: null,
+
+        total_waiting: 0,
+        total_serving: 0,
+        total_skipped: 0,
+        total_completed: 0,
+      },
+
+      /**
+       * ----------------------------------------
+       * USERS (EMPTY INIT)
+       * ----------------------------------------
+       */
+      users: {},
+
+      /**
+       * ----------------------------------------
+       * ANALYTICS (EMPTY INIT)
+       * ----------------------------------------
+       */
+      analytics: {
+        avg_wait_time: 0,
+        avg_service_time: 0,
+
+        total_served: 0,
+        total_no_show: 0,
+
+        peak_hours: {},
+      },
+
+      /**
+       * ----------------------------------------
+       * LIVE STATE (REALTIME UI)
+       * ----------------------------------------
+       */
+      live_state: {
+        crowd_level: "low",
+        crowd_score: 0,
+
+        estimated_wait_time_avg: 0,
+        last_updated: now,
+
+        active_users_count: 0,
+      },
+
+      created_at: now,
+      updated_at: now,
+    });
+
+    /**
+     * ----------------------------------------
+     * ESTABLISHMENT RECORD
+     * ----------------------------------------
+     */
+    await estRef.set({
+      id: estRef.key,
+      admin_id: user.uid,
+
+      name,
+      work_email,
+      location,
+
+      queue_capacity,
+      working_hours,
+
+      queue_id: queueRef.key,
+
+      status: "active",
+
+      created_at: now,
+      updated_at: now,
+    });
+
+    /**
+     * ----------------------------------------
+     * USER STATUS UPDATE
+     * ----------------------------------------
+     */
     await dbAdmin.ref(`users/${user.uid}`).update({
       establishment_completed: true,
     });
 
-    res.json({ success: true, id: ref.key });
+    return res.json({
+      success: true,
+      establishment_id: estRef.key,
+      queue_id: queueRef.key,
+    });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      error: err.message || "Failed to create establishment",
+    });
   }
 });
 

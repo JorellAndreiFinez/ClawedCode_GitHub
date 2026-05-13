@@ -55,7 +55,7 @@ function getStatusBadge(status: string) {
 }
 
 export default function UserDashboard() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
 
   const [establishments, setEstablishments] = useState<Establishment[]>([]);
@@ -76,26 +76,28 @@ export default function UserDashboard() {
     const unsubs = establishments.map((est) =>
       onValue(ref(db, `queues/${est.id}/users`), (snapshot) => {
         let active = 0;
+
         if (snapshot.exists()) {
           const users = Object.values(snapshot.val()) as QueueEntry[];
           active = users.filter(
             (u) =>
               u.status === "waiting" ||
               u.status === "called" ||
-              u.status === "serving"
+              u.status === "serving",
           ).length;
         }
+
         setQueueCounts((prev) => ({ ...prev, [est.id]: active }));
-      })
+      }),
     );
 
-    return () => unsubs.forEach((unsub) => unsub());
+    return () => unsubs.forEach((u) => u());
   }, [establishments]);
 
   const handleLogout = async () => {
     try {
       await logout();
-      navigate("/");
+      navigate("/logout", { replace: true });
     } catch (err) {
       console.error(err);
     }
@@ -103,11 +105,14 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* HEADER (merged UI + role info) */}
       <div className="bg-white border-b px-6 py-4 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold">LINEA</h1>
           <p className="text-xs text-gray-500">{user?.email}</p>
+          <p className="text-xs text-gray-400">Role: {role}</p>
         </div>
+
         <button
           onClick={handleLogout}
           className="text-sm px-3 py-1.5 border rounded-lg hover:bg-gray-50"
@@ -116,8 +121,10 @@ export default function UserDashboard() {
         </button>
       </div>
 
+      {/* BODY */}
       <div className="max-w-2xl mx-auto px-4 py-6">
         <WeatherBanner />
+
         <h2 className="text-lg font-semibold mb-4">Available Queues</h2>
 
         {establishments.length === 0 ? (
@@ -133,11 +140,13 @@ export default function UserDashboard() {
               const crowd = getCrowdLevel(score);
               const statusBadge = getStatusBadge(est.status);
               const eta = queueLength * (est.service_time || 3);
+
               const insight = getCrowdInsight({
                 currentCount: queueLength,
                 serviceTime: est.service_time,
                 capacity: est.queue_capacity,
               });
+
               const isDisabled = est.status !== "active";
 
               return (
@@ -147,11 +156,12 @@ export default function UserDashboard() {
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h3 className="font-semibold text-base">{est.name}</h3>
+                      <h3 className="font-semibold">{est.name}</h3>
                       <p className="text-sm text-gray-500">{est.location}</p>
                     </div>
+
                     <span
-                      className={`text-xs font-medium px-2 py-1 rounded-full ${statusBadge.color}`}
+                      className={`text-xs px-2 py-1 rounded-full ${statusBadge.color}`}
                     >
                       {statusBadge.label}
                     </span>
@@ -165,39 +175,34 @@ export default function UserDashboard() {
                   <div className="text-xs text-gray-500 mb-3 space-y-1">
                     <p>
                       Current queue:{" "}
-                      <span className={`font-medium ${crowd.text}`}>
-                        {crowd.label} load
-                      </span>
+                      <span className={crowd.text}>{crowd.label} load</span>
                     </p>
                     <p>
                       Compared with usual:{" "}
-                      <span className={`font-medium ${insight.text}`}>
-                        {insight.label}
-                      </span>
+                      <span className={insight.text}>{insight.label}</span>
                     </p>
                     <p>
                       Usual now: {insight.usualLow}-{insight.usualHigh} people,{" "}
                       {insight.usualLabel}
                     </p>
                     <p>
-                      Best time to go: {insight.bestTime} today - ~
-                      {insight.bestWait} min wait
+                      Best time: {insight.bestTime} (~{insight.bestWait} min)
                     </p>
                   </div>
 
-                  <div className="mt-2">
+                  <div>
                     {score >= 0.7 ? (
                       <button
                         onClick={() => navigate(`/queue/${est.id}/join`)}
-                        className="w-full py-2 text-sm font-medium bg-black text-white rounded-lg"
+                        className="w-full py-2 text-sm bg-black text-white rounded-lg"
                       >
-                        Join Remotely (Walk-in disabled)
+                        Join Remotely
                       </button>
                     ) : (
                       <button
                         disabled={isDisabled}
                         onClick={() => navigate(`/queue/${est.id}`)}
-                        className={`w-full py-2 text-sm font-medium rounded-lg ${
+                        className={`w-full py-2 text-sm rounded-lg ${
                           isDisabled
                             ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                             : "bg-black text-white"

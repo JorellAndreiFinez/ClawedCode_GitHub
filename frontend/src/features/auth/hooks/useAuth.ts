@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { listenAuth, getUserRole } from "@/lib/auth";
+import { listenAuth } from "@/lib/auth";
+import { ref, get } from "firebase/database";
+import { db } from "@/lib/firebase";
 import type { User } from "firebase/auth";
-import type { Role } from "@/lib/auth";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<Role | null>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -13,10 +14,15 @@ export function useAuth() {
       setUser(u);
 
       if (u) {
-        const r = await getUserRole(u.uid);
-        setRole(r as Role);
+        const snap = await get(ref(db, `users/${u.uid}`));
+
+        if (snap.exists()) {
+          setProfile(snap.val());
+        } else {
+          setProfile(null);
+        }
       } else {
-        setRole(null);
+        setProfile(null);
       }
 
       setLoading(false);
@@ -25,5 +31,9 @@ export function useAuth() {
     return () => unsub();
   }, []);
 
-  return { user, role, loading };
+  return {
+    user,
+    profile,
+    loading,
+  };
 }
