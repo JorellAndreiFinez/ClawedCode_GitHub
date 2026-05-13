@@ -1,35 +1,176 @@
+import { useEffect, useState } from "react";
+import { ref, onValue } from "firebase/database";
 import { useNavigate } from "react-router-dom";
+import { db } from "@/lib/firebase";
 import { logout } from "@/lib/auth";
 import { useAuth } from "@/features/auth";
+import WeatherBanner from "@/components/WeatherBanner";
+
+type Establishment = {
+  id: string;
+  name: string;
+  location: string;
+  queue_capacity: number;
+  service_time: number;
+  status: "active" | "paused" | "closed";
+};
+
+type QueueEntry = {
+  status: "waiting" | "called" | "serving" | "skipped" | "done";
+};
+
+function getCrowdLevel(score: number) {
+  if (score >= 0.7) return { label: "High", emoji: "🔴", color: "text-red-600 bg-red-50 border-red-200" };
+  if (score >= 0.3) return { label: "Moderate", emoji: "🟡", color: "text-yellow-600 bg-yellow-50 border-yellow-200" };
+  return { label: "Low", emoji: "🟢", color: "text-green-600 bg-green-50 border-green-200" };
+}
+
+function getStatusBadge(status: string) {
+  if (status === "paused") return { label: "Paused", color: "bg-yellow-100 text-yellow-700" };
+  if (status === "closed") return { label: "Closed", color: "bg-red-100 text-red-700" };
+  return { label: "Open", color: "bg-green-100 text-green-700" };
+}
 
 export default function UserDashboard() {
-  const { user, role } = useAuth();
-
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [establishments, setEstablishments] = useState<Establishment[]>([]);
+  const [queueCounts, setQueueCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "establishments"), (snapshot) => {
+      if (!snapshot.exists()) return;
+      const list = Object.values(snapshot.val()) as Establishment[];
+      setEstablishments(list);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (establishments.length === 0) return;
+
+    const unsubs = establishments.map((est) =>
+      onValue(ref(db, `queues/${est.id}/users`), (snapshot) => {
+        let active = 0;
+        if (snapshot.exists()) {
+          const users = Object.values(snapshot.val()) as QueueEntry[];
+          active = users.filter(
+            (u) => u.status === "waiting" || u.status === "called" || u.status === "serving"
+          ).length;
+        }
+        setQueueCounts((prev) => ({ ...prev, [est.id]: active }));
+      })
+    );
+
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [establishments]);
 
   const handleLogout = async () => {
     try {
       await logout();
-
       navigate("/");
     } catch (err) {
       console.error(err);
     }
   };
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">User Dashboard</h1>
+    <div className="min-h-screen bg-gray-50">
+      {/* HEADER */}
+      <div className="bg-white border-b px-6 py-4 flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-bold">LINEA</h1>
+          <p className="text-xs text-gray-500">{user?.email}</p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="text-sm px-3 py-1.5 border rounded-lg hover:bg-gray-50"
+        >
+          Logout
+        </button>
+      </div>
 
-      <p className="mt-2 text-gray-600">Welcome {user?.email}</p>
+      {/* CONTENT */}
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <WeatherBanner />
+        <h2 className="text-lg font-semibold mb-4">Available Queues</h2>
 
-      <p className="mt-2 text-sm">Role: {role}</p>
+        {establishments.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <p className="text-4xl mb-3">🏪</p>
+            <p className="font-medium">No queues available right now</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {establishments.map((est) => {
+              const queueLength = queueCounts[est.id] ?? 0;
+              const score = Math.min(queueLength / est.queue_capacity, 1);
+              const crowd = getCrowdLevel(score);
+              const statusBadge = getStatusBadge(est.status);
+              const eta = queueLength * (est.service_time || 3);
+              const isDisabled = est.status !== "active";
 
-      <button
-        onClick={handleLogout}
-        className="mt-4 px-4 py-2 bg-black text-white rounded-lg"
-      >
-        Logout
-      </button>
+              return (
+                <div
+                  key={est.id}
+                  className="bg-white border rounded-xl p-4 shadow-sm"
+                >
+                  {/* TOP ROW */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-semibold text-base">{est.name}</h3>
+                      <p className="text-sm text-gray-500">{est.location}</p>
+                    </div>
+                    <span
+                      className={`text-xs font-medium px-2 py-1 rounded-full ${statusBadge.color}`}
+                    >
+                      {statusBadge.label}
+                    </span>
+                  </div>
+
+                  {/* STATS ROW */}
+                  <div className="flex gap-4 text-sm text-gray-600 mb-3">
+                    <span>{queueLength} waiting</span>
+                    <span>~{eta} min wait</span>
+                  </div>
+
+                  {/* CROWD BADGE */}
+                  <div
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full border mb-3 ${crowd.color}`}
+                  >
+                    {crowd.emoji} {crowd.label} Crowd
+                  </div>
+
+                  {/* CTA */}
+                  <div className="mt-2">
+                    {score >= 0.7 ? (
+                      <button
+                        onClick={() => navigate(`/queue/${est.id}/join`)}
+                        className="w-full py-2 text-sm font-medium bg-black text-white rounded-lg"
+                      >
+                        Join Remotely (Walk-in disabled)
+                      </button>
+                    ) : (
+                      <button
+                        disabled={isDisabled}
+                        onClick={() => navigate(`/queue/${est.id}`)}
+                        className={`w-full py-2 text-sm font-medium rounded-lg ${
+                          isDisabled
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "bg-black text-white"
+                        }`}
+                      >
+                        {isDisabled ? "Queue Unavailable" : "View Queue"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
