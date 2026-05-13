@@ -8,7 +8,15 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { onValue, push, ref, runTransaction, set, update } from "firebase/database";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, MapPin } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock3,
+  Info,
+  Lightbulb,
+  LockKeyhole,
+  MapPin,
+  ShieldCheck,
+} from "lucide-react";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getCrowdInsight } from "@/lib/crowdInsight";
@@ -40,6 +48,17 @@ type QueueEntry = {
   checked_in?: boolean;
 };
 
+type NoShowEntry = Omit<QueueEntry, "status"> & {
+  status: QueueStatus | "no_show" | "cancelled";
+  expires_at?: number;
+  moved_at?: number;
+  station_id?: string | null;
+};
+
+type QueueStation = {
+  status?: "active" | "paused" | "closed";
+};
+
 type ActivityItem = {
   id: string;
   label: string;
@@ -49,6 +68,7 @@ type ActivityItem = {
 
 const LOGO_SRC = "/linea/linea-logo.png";
 const ACTIVE_STATUSES = new Set<QueueStatus>(["waiting", "called", "serving"]);
+const COOLDOWN_MS = 60 * 60 * 1000;
 
 function getName(email?: string | null) {
   if (!email) return "Guest";
@@ -75,6 +95,39 @@ function formatElapsed(timestamp?: number | null) {
   const remaining = minutes % 60;
   if (remaining === 0) return `${hours} hr ago`;
   return `${hours} hr ${remaining} min ago`;
+}
+
+function formatDate(timestamp?: number | null) {
+  const date = timestamp ? new Date(timestamp) : new Date();
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDuration(minutes: number) {
+  if (minutes <= 0) return "0 mins";
+  if (minutes === 1) return "1 min";
+  return `${minutes} mins`;
+}
+
+function getMinuteDiff(start?: number | null, end?: number | null) {
+  if (!start || !end || end <= start) return 0;
+  return Math.max(1, Math.round((end - start) / 60000));
+}
+
+function formatCountdown(ms: number) {
+  const safeMs = Math.max(ms, 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
 }
 
 function getCrowdLevel(score: number) {
@@ -207,6 +260,9 @@ export default function QueueDetail() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [noShows, setNoShows] = useState<NoShowEntry[]>([]);
+  const [stations, setStations] = useState<QueueStation[]>([]);
+  const [now, setNow] = useState(() => Date.now());
   const [name, setName] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -232,17 +288,63 @@ export default function QueueDetail() {
       setUsers(list);
     });
 
+    const noShowUnsub = onValue(ref(db, `queues/${id}/no_shows`), (snapshot) => {
+      if (!snapshot.exists()) {
+        setNoShows([]);
+        return;
+      }
+
+      const list = Object.entries(snapshot.val()).map(([entryId, value]) => ({
+        id: entryId,
+        ...(value as Omit<NoShowEntry, "id">),
+      }));
+
+      setNoShows(list);
+    });
+
+    const stationUnsub = onValue(ref(db, `queues/${id}/stations`), (snapshot) => {
+      if (!snapshot.exists()) {
+        setStations([]);
+        return;
+      }
+
+      setStations(Object.values(snapshot.val()) as QueueStation[]);
+    });
+
     return () => {
       estUnsub();
       queueUnsub();
+      noShowUnsub();
+      stationUnsub();
     };
   }, [id]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const activeUsers = useMemo(() => getActiveUsers(users), [users]);
+  const myUserEntry = useMemo(() => {
+    if (!user) return null;
+    return (
+      [...users]
+        .filter((entry) => entry.user_id === user.uid)
+        .sort((a, b) => (b.joined_at || 0) - (a.joined_at || 0))[0] || null
+    );
+  }, [users, user]);
   const myEntry = useMemo(() => {
     if (!user) return null;
     return activeUsers.find((entry) => entry.user_id === user.uid) || null;
   }, [activeUsers, user]);
+  const myNoShowEntry = useMemo(() => {
+    if (!user) return null;
+    return (
+      [...noShows]
+        .filter((entry) => entry.user_id === user.uid)
+        .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0))[0] || null
+    );
+  }, [noShows, user]);
 
   const activeCount = activeUsers.length;
   const serviceTime = Math.max(establishment?.service_time || 3, 1);
@@ -283,8 +385,53 @@ export default function QueueDetail() {
   const nextTicketNumber =
     Math.max(0, ...users.map((entry) => entry.ticket_number || 0)) + 1;
   const activity = useMemo(() => buildActivity(users), [users]);
-  const isQueueClosed = establishment?.status !== "active";
+  const areStationsPaused =
+    stations.length > 0 && stations.every((station) => station.status === "paused");
+  const isQueuePaused = establishment?.status === "paused" || areStationsPaused;
+  const isQueueClosed = establishment?.status !== "active" || isQueuePaused;
   const qrCheckInValue = myEntry?.qr_id || myEntry?.id || "";
+  const completedEntry =
+    myUserEntry?.status === "done" && !myUserEntry.left_at ? myUserEntry : null;
+  const leftCooldownEntry = myUserEntry?.left_at ? myUserEntry : null;
+  const noShowCooldownEntry =
+    myNoShowEntry &&
+    myNoShowEntry.status !== "cancelled" &&
+    (myNoShowEntry.expires_at || 0) > now
+      ? myNoShowEntry
+      : null;
+  const cooldownEntry = noShowCooldownEntry || leftCooldownEntry;
+  const cooldownStartedAt =
+    noShowCooldownEntry?.moved_at ||
+    leftCooldownEntry?.left_at ||
+    Math.max(0, now - COOLDOWN_MS);
+  const cooldownExpiresAt =
+    noShowCooldownEntry?.expires_at || cooldownStartedAt + COOLDOWN_MS;
+  const cooldownRemainingMs = Math.max(0, cooldownExpiresAt - now);
+  const isCooldownActive = Boolean(cooldownEntry && cooldownRemainingMs > 0);
+  const isDoneView = Boolean(completedEntry && !isCooldownActive);
+  const cooldownProgress = Math.min(
+    100,
+    Math.max(0, ((now - cooldownStartedAt) / COOLDOWN_MS) * 100),
+  );
+  const totalQueueMinutes = completedEntry
+    ? getMinuteDiff(completedEntry.joined_at, completedEntry.completed_at || now)
+    : 0;
+  const remoteWaitMinutes = completedEntry
+    ? Math.max(0, getMinuteDiff(completedEntry.joined_at, completedEntry.called_at) || eta)
+    : 0;
+  const inBranchWaitMinutes = completedEntry
+    ? Math.max(1, getMinuteDiff(completedEntry.called_at, completedEntry.completed_at) || serviceTime)
+    : 0;
+  const banner =
+    isCooldownActive
+      ? { text: "Cooldown Period Active", color: "bg-[#c90000]" }
+      : isDoneView
+        ? null
+        : isQueuePaused
+          ? { text: "This Queue is Currently Paused", color: "bg-[#fe7952]" }
+          : isJoined
+            ? { text: "You are in this queue", color: "bg-[#39b580]" }
+            : { text: "Join the Queue Now!", color: "bg-[#858583]" };
 
   const handleJoin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -423,13 +570,13 @@ export default function QueueDetail() {
         </div>
       </header>
 
-      <div
-        className={`py-3 text-center text-sm font-extrabold text-white ${
-          isJoined ? "bg-[#39b580]" : "bg-[#858583]"
-        }`}
-      >
-        {isJoined ? "You are in this queue" : "Join the Queue Now!"}
-      </div>
+      {banner && (
+        <div
+          className={`py-3 text-center text-sm font-extrabold text-white ${banner.color}`}
+        >
+          {banner.text}
+        </div>
+      )}
 
       <main className="mx-auto max-w-7xl px-6 py-16">
         <button
@@ -450,7 +597,14 @@ export default function QueueDetail() {
               </p>
             </div>
 
-            {isJoined ? (
+            {isDoneView || isCooldownActive ? (
+              <button
+                disabled
+                className="min-h-16 cursor-not-allowed rounded-2xl bg-[#e7e7e5] px-12 text-xl font-extrabold text-[#858583]"
+              >
+                Leave queue
+              </button>
+            ) : isJoined ? (
               <button
                 onClick={() => setLeaveOpen(true)}
                 className="min-h-16 rounded-2xl bg-[#c90000] px-12 text-xl font-extrabold text-white transition-colors hover:bg-[#a80000]"
@@ -467,12 +621,233 @@ export default function QueueDetail() {
                     : "bg-[#39b580] hover:bg-[#006c47]"
                 }`}
               >
-                {isQueueClosed ? `Queue ${establishment.status}` : "Join queue"}
+                {isQueueClosed ? "Join queue" : "Join queue"}
               </button>
             )}
           </div>
         </section>
 
+        {isCooldownActive ? (
+          <section className="mt-12">
+            <p className="text-lg font-medium uppercase">Live preview</p>
+            <h2 className="mt-4 text-3xl font-extrabold">
+              Your queue at a glance
+            </h2>
+
+            <div className="mt-8 grid gap-7 lg:grid-cols-[1fr_520px]">
+              <article className="rounded-2xl border border-[#bccabf] bg-white p-10 text-center shadow-[0_14px_45px_rgba(0,0,0,0.08)]">
+                <div className="mx-auto flex w-fit items-end justify-center text-[#c90000]">
+                  <LockKeyhole className="size-24" strokeWidth={2.3} />
+                  <Clock3 className="-ml-7 size-12 rounded-full bg-white fill-white" />
+                </div>
+
+                <h3 className="mt-8 text-4xl font-extrabold">
+                  Cooldown Period Active
+                </h3>
+                <p className="mt-7 text-2xl font-medium text-[#858583]">
+                  {noShowCooldownEntry
+                    ? `You missed your turn at ${establishment.name}`
+                    : `You left the queue at ${establishment.name}`}
+                </p>
+
+                <div className="mx-auto mt-12 max-w-2xl rounded-3xl bg-[#f8e4e4] px-8 py-8">
+                  <p className="text-xl font-medium uppercase">
+                    Estimated time remaining
+                  </p>
+                  <p className="mt-4 text-7xl font-extrabold leading-none text-[#c90000]">
+                    {formatCountdown(cooldownRemainingMs)}
+                  </p>
+                </div>
+
+                <div className="mx-auto mt-14 max-w-2xl">
+                  <div className="h-1.5 rounded-full bg-[#e7e7e5]">
+                    <div
+                      className="h-1.5 rounded-full bg-[#c90000]"
+                      style={{ width: `${cooldownProgress}%` }}
+                    />
+                  </div>
+                  <div className="mt-7 flex items-center justify-between text-2xl font-medium text-[#858583]">
+                    <span>
+                      Started {formatElapsed(cooldownStartedAt)}
+                    </span>
+                    <span>60 mins total</span>
+                  </div>
+                </div>
+              </article>
+
+              <aside className="rounded-2xl border border-[#bccabf] bg-white p-10 shadow-[0_14px_45px_rgba(0,0,0,0.08)]">
+                <h3 className="text-3xl font-extrabold">
+                  Access Restricted Policy
+                </h3>
+
+                <div className="mt-10 space-y-10">
+                  <div className="flex gap-6">
+                    <ShieldCheck className="mt-1 size-10 shrink-0 text-[#c90000]" />
+                    <div>
+                      <h4 className="text-lg font-extrabold">
+                        Security Protection
+                      </h4>
+                      <p className="mt-2 text-base leading-tight">
+                        To protect your digital queue position and identity, our
+                        system automatically triggers a cooldown after
+                        unsuccessful interactions.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-6">
+                    <Clock3 className="mt-1 size-10 shrink-0 text-[#c90000]" />
+                    <div>
+                      <h4 className="text-lg font-extrabold">
+                        Mandatory Wait Time
+                      </h4>
+                      <p className="mt-2 text-base leading-tight">
+                        Cooldown periods cannot be manually bypassed by support
+                        staff to preserve queue integrity.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-6">
+                    <Info className="mt-1 size-10 shrink-0 text-[#c90000]" />
+                    <div>
+                      <h4 className="text-lg font-extrabold">
+                        What happens next?
+                      </h4>
+                      <p className="mt-2 text-base leading-tight">
+                        Once the timer hits zero, access restores automatically.
+                        You may join the queue again.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+        ) : isDoneView && completedEntry ? (
+          <section className="mt-12">
+            <p className="text-lg font-medium uppercase">Live preview</p>
+            <h2 className="mt-4 text-3xl font-extrabold">
+              Your queue at a glance
+            </h2>
+
+            <div className="mt-8 grid gap-7 lg:grid-cols-[1fr_390px]">
+              <article className="rounded-2xl border border-[#bccabf] bg-white p-10 shadow-[0_14px_45px_rgba(0,0,0,0.08)]">
+                <div className="text-center">
+                  <p className="text-xl font-extrabold text-[#39b580]">
+                    Service Completed
+                  </p>
+                  <h3 className="mt-4 text-4xl font-extrabold">
+                    You have been served!
+                  </h3>
+                </div>
+
+                <div className="mt-16">
+                  <div className="flex items-center justify-between gap-5">
+                    <p className="text-lg font-medium">Queue Progress</p>
+                    <p className="text-lg font-extrabold">Completed</p>
+                  </div>
+                  <div className="mt-3 h-3 rounded-full bg-[#39b580]" />
+                  <div className="mt-2 grid grid-cols-3 text-sm font-medium text-[#858583]">
+                    <span>Check in</span>
+                    <span className="text-center">Waiting</span>
+                    <span className="text-right">Service</span>
+                  </div>
+                </div>
+
+                <div className="mt-16 grid gap-8 md:grid-cols-4">
+                  <div>
+                    <p className="text-xl font-medium text-[#858583]">Date</p>
+                    <p className="mt-2 text-2xl font-extrabold">
+                      {formatDate(completedEntry.completed_at)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-medium text-[#858583]">
+                      Total Queue Time
+                    </p>
+                    <p className="mt-2 text-2xl font-extrabold">
+                      {formatDuration(totalQueueMinutes)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-medium text-[#858583]">
+                      Remote Wait
+                    </p>
+                    <p className="mt-2 text-2xl font-extrabold">
+                      {formatDuration(remoteWaitMinutes)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-medium text-[#858583]">
+                      In-branch Wait
+                    </p>
+                    <p className="mt-2 text-2xl font-extrabold">
+                      {formatDuration(inBranchWaitMinutes)}
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <div className="space-y-5">
+                <aside className="rounded-2xl border border-[#bccabf] bg-white p-7 shadow-[0_14px_45px_rgba(0,0,0,0.08)]">
+                  <h3 className="text-xl font-extrabold">Queue Details</h3>
+                  <div className="mt-6 space-y-5 text-xl">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[#858583]">Crowd Now</span>
+                      <span
+                        className={`rounded-full border px-5 py-1 text-sm font-medium ${crowd.badge}`}
+                      >
+                        {crowd.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[#858583]">Usual Crowd</span>
+                      <span
+                        className={`rounded-full border px-5 py-1 text-sm font-medium ${usualCrowd.badge}`}
+                      >
+                        {usualCrowd.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[#858583]">Best time</span>
+                      <span className="font-extrabold">{insight.bestTime}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[#858583]">Cut-off time</span>
+                      <span className="font-extrabold text-[#fe7952]">
+                        5:00 PM
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[#858583]">Cooldown</span>
+                      <span className="font-extrabold">1 hr</span>
+                    </div>
+                  </div>
+                </aside>
+
+                <button
+                  disabled
+                  className="min-h-16 w-full rounded-2xl bg-[#39b580] text-xl font-extrabold text-white"
+                >
+                  {completedEntry.checked_in ? "Checked-in" : "Completed"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-9 flex max-w-4xl items-start gap-5 rounded-2xl bg-[#fe7952] px-8 py-5 text-white">
+              <Lightbulb className="mt-1 size-7 shrink-0" />
+              <div>
+                <p className="text-xl font-extrabold">Smart Scheduler Tip</p>
+                <p className="mt-1 max-w-xl text-sm leading-5">
+                  You saved time by joining remotely. Based on your history,
+                  weekday mornings are usually faster for this branch.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <>
         <section className="mt-12">
           <p className="text-lg font-medium uppercase">Live preview</p>
           <h2 className="mt-4 text-3xl font-extrabold">
@@ -563,6 +938,13 @@ export default function QueueDetail() {
             </article>
 
             <div className="space-y-5">
+              {isQueuePaused && !isJoined && (
+                <p className="px-4 text-center text-lg leading-tight">
+                  <span className="font-extrabold">NOTE:</span> You cannot join
+                  right now because the admin paused the queue
+                </p>
+              )}
+
               <aside className="rounded-2xl border border-[#bccabf] bg-white p-7 shadow-[0_14px_45px_rgba(0,0,0,0.08)]">
                 <h3 className="text-xl font-extrabold">Queue Details</h3>
                 <div className="mt-6 space-y-5 text-xl">
@@ -639,6 +1021,8 @@ export default function QueueDetail() {
             </div>
           )}
         </section>
+          </>
+        )}
       </main>
 
       <footer className="mt-20 border-t border-[#e3e2e2] bg-[#fbf9f9]">
