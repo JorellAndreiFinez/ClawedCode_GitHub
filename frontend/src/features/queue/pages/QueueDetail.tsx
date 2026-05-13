@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { onValue, push, ref, runTransaction, set, update } from "firebase/database";
+import { get, onValue, push, ref, runTransaction, set, update } from "firebase/database";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft,
@@ -270,9 +270,13 @@ export default function QueueDetail() {
   useEffect(() => {
     if (!id) return;
 
-    const estUnsub = onValue(ref(db, `establishments/${id}`), (snapshot) => {
-      if (snapshot.exists()) setEstablishment(snapshot.val());
-    });
+    const estUnsub =  onValue(ref(db, `queues/${id}`), async (snapshot) => {
+      if (snapshot.exists()) {
+        const estId = snapshot.val().establishment_id;
+        const estSnapshot = await get(ref(db, `establishments/${estId}`))
+        if (estSnapshot.exists()) setEstablishment(estSnapshot.val())
+      }
+    })
 
     const queueUnsub = onValue(ref(db, `queues/${id}/users`), (snapshot) => {
       if (!snapshot.exists()) {
@@ -495,7 +499,7 @@ export default function QueueDetail() {
 
     try {
       await update(ref(db, `queues/${id}/users/${myEntry.id}`), {
-        status: "done",
+        status: "cancelled",
         completed_at: Date.now(),
         left_at: Date.now(),
       });
