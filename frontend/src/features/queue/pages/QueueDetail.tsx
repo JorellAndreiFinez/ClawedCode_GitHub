@@ -267,6 +267,7 @@ export default function QueueDetail() {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isNoShowOpen, setIsNoShowOpen] = useState(true)
+  const [isPriority, setIsPriority] = useState(false)
 
   useEffect(() => {
     if (!id) return;
@@ -475,7 +476,7 @@ export default function QueueDetail() {
         status: "waiting",
         ticket_number: ticketNumber,
         station_id: null,
-        is_priority: false,
+        is_priority: isPriority,
         priority_type: "none",
         join_method: "remote",
         joined_at: Date.now(),
@@ -1098,6 +1099,19 @@ export default function QueueDetail() {
               placeholder="e.g. Juan Dela Cruz"
               className="mx-auto mt-5 block h-16 w-full max-w-sm rounded-2xl border border-[#858583] px-5 text-center text-2xl font-medium outline-none placeholder:text-[#d8d8d6] focus:border-[#006c47]"
             />
+            {/* Priority Toggle */}
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <input
+                id="priority"
+                type="checkbox"
+                checked={isPriority}
+                onChange={(e) => setIsPriority(e.target.checked)}
+                className="h-6 w-6 cursor-pointer accent-[#39b580]"
+              />
+              <label htmlFor="priority" className="text-xl font-medium text-[#858583] cursor-pointer">
+                Priority Lane
+              </label>
+            </div>
             {formError && (
               <p className="mt-4 text-sm font-bold text-[#c90000]">{formError}</p>
             )}
