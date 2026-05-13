@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js"
   },
+  "ignoreDeprecations": "6.0",
   "keywords": [],
   "author": "",
   "license": "ISC",
