@@ -9,6 +9,7 @@ import EstablishmentPage from "@/features/dashboard/admin/EstablishmentPage";
 import AdminQueueControlPanel from "./features/dashboard/admin/AdminQueueControlPanel";
 
 import SetupEstablishment from "./features/establishment/pages/SetupEstablishment";
+import DiscoverPage from "./features/discover/pages/DiscoverPage";
 import QueueDetail from "./features/queue/pages/QueueDetail";
 import JoinQueue from "./features/queue/pages/JoinQueue";
 import TicketPage from "./features/queue/pages/TicketPage";
@@ -25,6 +26,7 @@ export default function App() {
 
         {/* USER */}
         <Route path="/dashboard" element={<UserDashboard />} />
+        <Route path="/discover" element={<DiscoverPage />} />
 
         <Route path="/queue/:id" element={<QueueDetail />} />
         <Route path="/queue/:id/join" element={<JoinQueue />} />
