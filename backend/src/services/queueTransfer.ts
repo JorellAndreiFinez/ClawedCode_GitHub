@@ -1,3 +1,4 @@
+import { dbAdmin } from "../firebaseAdmin";
 export async function autoTransferInactiveStations(queue: any) {
   const stations = queue.stations || {};
   const users = queue.users || {};
