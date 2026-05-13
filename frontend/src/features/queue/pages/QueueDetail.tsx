@@ -30,7 +30,7 @@ type Establishment = {
   status: "active" | "paused" | "closed";
 };
 
-type QueueStatus = "waiting" | "called" | "serving" | "skipped" | "done";
+type QueueStatus = "waiting" | "called" | "serving" | "skipped" | "done" | "cancelled" | "no_show";
 
 type QueueEntry = {
   id: string;
@@ -49,7 +49,7 @@ type QueueEntry = {
 };
 
 type NoShowEntry = Omit<QueueEntry, "status"> & {
-  status: QueueStatus | "no_show" | "cancelled";
+  status: QueueStatus;
   expires_at?: number;
   moved_at?: number;
   station_id?: string | null;
@@ -67,7 +67,7 @@ type ActivityItem = {
 };
 
 const LOGO_SRC = "/linea/linea-logo.png";
-const ACTIVE_STATUSES = new Set<QueueStatus>(["waiting", "called", "serving"]);
+const ACTIVE_STATUSES = new Set<QueueStatus>(["waiting", "called", "serving", "no_show"]);
 const COOLDOWN_MS = 20 * 60 * 1000;
 
 function getName(email?: string | null) {
@@ -266,6 +266,7 @@ export default function QueueDetail() {
   const [name, setName] = useState("");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isNoShowOpen, setIsNoShowOpen] = useState(true)
 
   useEffect(() => {
     if (!id) return;
@@ -397,6 +398,7 @@ export default function QueueDetail() {
   const completedEntry =
     myUserEntry?.status === "done" && !myUserEntry.left_at ? myUserEntry : null;
   const leftCooldownEntry = myUserEntry?.left_at ? myUserEntry : null;
+  const isNoShow = Boolean(myUserEntry?.status === "no_show");
   const noShowCooldownEntry =
     myNoShowEntry &&
     myNoShowEntry.status !== "cancelled" &&
@@ -445,7 +447,10 @@ export default function QueueDetail() {
       setFormError("Enter your full name.");
       return;
     }
+    await join();
+  };
 
+  const join = async () => {
     setIsSaving(true);
     setFormError("");
 
@@ -490,7 +495,7 @@ export default function QueueDetail() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }
 
   const handleLeave = async () => {
     if (!id || !myEntry) return;
@@ -527,6 +532,10 @@ export default function QueueDetail() {
       setIsSaving(false);
     }
   };
+
+  const handleNoShowWait = async () => {
+    await Promise.all([handleLeave(), join()])
+  }
 
   if (!establishment) {
     return (
@@ -580,6 +589,35 @@ export default function QueueDetail() {
         >
           {banner.text}
         </div>
+      )}
+
+
+      {(isNoShow && isNoShowOpen) && (
+        <Modal onClose={() => setIsNoShowOpen(false)}>
+          <div className="text-center">
+            <h2 className="mx-auto max-w-md text-4xl font-extrabold leading-tight">
+              You have been declared as a no-show
+            </h2>
+            <p className="mx-auto mt-6 max-w-md text-2xl font-medium leading-tight text-[#858583]">
+              Do you want to continue waiting?
+            </p>
+            <div className="mt-12 flex flex-col justify-center gap-6 sm:flex-row">
+              <button
+                onClick={handleNoShowWait}
+                className="min-h-16 rounded-2xl border border-[#858583] px-10 text-xl font-extrabold"
+              >
+                Wait
+              </button>
+              <button
+                onClick={handleLeave}
+                disabled={false}
+                className="min-h-16 rounded-2xl bg-[#c90000] px-12 text-xl font-extrabold text-white disabled:cursor-not-allowed disabled:bg-[#858583]"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <main className="mx-auto max-w-7xl px-6 py-16">
