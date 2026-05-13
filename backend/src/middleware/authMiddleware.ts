@@ -15,7 +15,7 @@ export async function verifyToken(
 
     const decoded = await authAdmin.verifyIdToken(token);
 
-    req.body.user = decoded;
+    (req as any).user = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid token" });

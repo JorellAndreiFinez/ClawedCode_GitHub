@@ -7,7 +7,9 @@ export async function createEstablishment(data: any) {
       unsub();
 
       try {
-        if (!user) return reject(new Error("Not authenticated"));
+        if (!user) {
+          return reject(new Error("Not authenticated"));
+        }
 
         const token = await user.getIdToken(true);
 
@@ -24,5 +26,39 @@ export async function createEstablishment(data: any) {
         reject(err);
       }
     });
+  });
+}
+
+export async function getMyEstablishment() {
+  return new Promise((resolve, reject) => {
+    const unsub = auth.onAuthStateChanged(async (user) => {
+      unsub();
+
+      try {
+        if (!user) {
+          return reject(new Error("Not authenticated"));
+        }
+
+        const token = await user.getIdToken();
+
+        const res = await apiFetch("/auth/me", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        resolve(res);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+export async function updateEstablishment(id: string, data: any) {
+  return apiFetch(`/establishments/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
   });
 }
