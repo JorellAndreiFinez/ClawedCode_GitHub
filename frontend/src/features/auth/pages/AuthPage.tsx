@@ -1,10 +1,10 @@
 import AuthForm from "../components/AuthForm";
 import { login, register } from "@/lib/auth";
 
-import { useNavigate } from "react-router-dom";
+// import { useNavigate } from "react-router-dom";
 
 export default function AuthPage() {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -14,16 +14,6 @@ export default function AuthPage() {
             const result = await login(email, password);
 
             await result.user.getIdToken(true);
-
-            if (result.profile.role === "admin") {
-              if (result.profile.establishment_completed === false) {
-                navigate("/establishment-setup");
-              } else {
-                navigate("/admin");
-              }
-            } else {
-              navigate("/dashboard");
-            }
 
             return result;
           } catch (e: any) {

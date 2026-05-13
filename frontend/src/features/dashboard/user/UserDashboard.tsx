@@ -4,18 +4,19 @@ import { useAuth } from "@/features/auth";
 
 export default function UserDashboard() {
   const { user, role } = useAuth();
-
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
       await logout();
 
-      navigate("/");
+      // IMPORTANT: go to logout route
+      navigate("/logout", { replace: true });
     } catch (err) {
       console.error(err);
     }
   };
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold">User Dashboard</h1>

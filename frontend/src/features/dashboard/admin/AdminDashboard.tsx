@@ -4,14 +4,14 @@ import { useAuth } from "@/features/auth";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
-
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
       await logout();
 
-      navigate("/");
+      // IMPORTANT: go to logout route (not "/")
+      navigate("/logout", { replace: true });
     } catch (err) {
       console.error(err);
     }

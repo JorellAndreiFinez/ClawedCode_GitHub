@@ -46,21 +46,21 @@ router.post("/logout", async (req, res) => {
   try {
     const token = req.headers.authorization?.split("Bearer ")[1];
 
-    if (!token) {
-      return res.status(401).json({ error: "No token provided" });
+    if (token) {
+      try {
+        const decoded = await authAdmin.verifyIdToken(token);
+        await authAdmin.revokeRefreshTokens(decoded.uid);
+      } catch (err) {
+        console.log("Token invalid during logout, skipping revoke");
+      }
     }
-
-    const decoded = await authAdmin.verifyIdToken(token);
-
-    // revoke refresh tokens
-    await authAdmin.revokeRefreshTokens(decoded.uid);
 
     return res.json({
       success: true,
       message: "Logged out successfully",
     });
   } catch (err) {
-    return res.status(401).json({
+    return res.status(500).json({
       error: "Logout failed",
     });
   }
