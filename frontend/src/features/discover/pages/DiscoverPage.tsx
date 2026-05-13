@@ -316,7 +316,7 @@ export default function DiscoverPage() {
 
                   <button
                     disabled={disabled}
-                    onClick={() => navigate(`/queue/${queue.id}`)}
+                    onClick={() => navigate(`/queue/${queue.queue_id}`)}
                     className={`mt-7 flex min-h-16 w-full items-center justify-center rounded-2xl text-xl font-extrabold transition-colors ${
                       disabled
                         ? "cursor-not-allowed bg-[#6d7a71] text-white"
