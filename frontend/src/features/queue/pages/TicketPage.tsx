@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ref, onValue, update } from "firebase/database";
 import { QRCodeSVG } from "qrcode.react";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/features/auth";
 
 type QueueEntry = {
   user_id: string;
@@ -44,7 +43,9 @@ function playBeep() {
     gain.gain.value = 0.3;
     osc.start();
     setTimeout(() => { osc.stop(); ctx.close(); }, 600);
-  } catch (_) {}
+  } catch {
+    return;
+  }
 }
 
 function computePosition(
@@ -73,16 +74,18 @@ const STATUS_LABELS: Record<string, string> = {
   serving: "Serving",
   done: "Done",
 };
+type StatusStep = (typeof STATUS_STEPS)[number];
+
+function isStatusStep(status: QueueEntry["status"]): status is StatusStep {
+  return STATUS_STEPS.some((step) => step === status);
+}
 
 export default function TicketPage() {
   const { estId, pushKey } = useParams<{ estId: string; pushKey: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-
   const [entry, setEntry] = useState<QueueEntry | null>(null);
   const [establishment, setEstablishment] = useState<Establishment | null>(null);
   const [allUsers, setAllUsers] = useState<{ id: string; joined_at: number; is_priority: boolean; status: string }[]>([]);
-  const [position, setPosition] = useState<number | null>(null);
   const [checkedIn, setCheckedIn] = useState(false);
 
   const prevPositionRef = useRef<number | null>(null);
@@ -106,7 +109,11 @@ export default function TicketPage() {
     if (!estId) return;
     return onValue(ref(db, `queues/${estId}/users`), (snap) => {
       if (!snap.exists()) { setAllUsers([]); return; }
-      const list = Object.entries(snap.val()).map(([id, val]: [string, any]) => ({
+      const users = snap.val() as Record<
+        string,
+        { joined_at: number; is_priority: boolean; status: string }
+      >;
+      const list = Object.entries(users).map(([id, val]) => ({
         id,
         joined_at: val.joined_at,
         is_priority: val.is_priority,
@@ -116,25 +123,24 @@ export default function TicketPage() {
     });
   }, [estId]);
 
-  useEffect(() => {
-    if (!entry || !pushKey) return;
-    if (entry.status !== "waiting") { setPosition(null); return; }
-
-    const pos = computePosition(allUsers, {
+  const position = useMemo(() => {
+    if (!entry || !pushKey || entry.status !== "waiting") return null;
+    return computePosition(allUsers, {
       id: pushKey,
       joined_at: entry.joined_at,
       is_priority: entry.is_priority,
     });
+  }, [allUsers, entry, pushKey]);
 
-    if (pos === 1 && prevPositionRef.current !== 1 && !beepedRef.current) {
+  useEffect(() => {
+    if (position === 1 && prevPositionRef.current !== 1 && !beepedRef.current) {
       playBeep();
       beepedRef.current = true;
     }
-    if (pos !== 1) beepedRef.current = false;
+    if (position !== 1) beepedRef.current = false;
 
-    prevPositionRef.current = pos;
-    setPosition(pos);
-  }, [allUsers, entry, pushKey]);
+    prevPositionRef.current = position;
+  }, [position]);
 
   const handleRejoin = async () => {
     if (!estId || !pushKey) return;
@@ -165,7 +171,9 @@ export default function TicketPage() {
   const serviceTime = establishment.service_time || 3;
   const eta = position != null ? (position - 1) * serviceTime : 0;
   const isYouAreNext = position === 1 && entry.status === "waiting";
-  const activeStep = STATUS_STEPS.indexOf(entry.status as any);
+  const activeStep = isStatusStep(entry.status)
+    ? STATUS_STEPS.indexOf(entry.status)
+    : -1;
 
   const activeCount = allUsers.filter(
     (u) => u.status === "waiting" || u.status === "called" || u.status === "serving"

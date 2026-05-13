@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Cloud, CloudRain, SunMedium } from "lucide-react";
 
 type WeatherState = "sunny" | "rainy" | "cloudy";
 type WeatherSnapshot = {
@@ -7,29 +8,38 @@ type WeatherSnapshot = {
   location: string;
 };
 
-const WEATHER_CONFIG: Record<
-  WeatherState,
-  { label: string; message: string; sub: string; bg: string }
-> = {
+const WEATHER_CONFIG = {
   sunny: {
+    Icon: SunMedium,
     label: "Sunny",
     message: "Good time to go",
     sub: "Clear weather should make travel easier.",
-    bg: "bg-yellow-50 border-yellow-200 text-yellow-800",
+    tone: "border-[#39b580] bg-[#83f9be]/35 text-[#004029]",
   },
   rainy: {
+    Icon: CloudRain,
     label: "Rainy",
-    message: "Expect delays / harder travel",
+    message: "Expect delays",
     sub: "Rain may slow down trips to the queue.",
-    bg: "bg-blue-50 border-blue-200 text-blue-800",
+    tone: "border-[#fe7952] bg-[#ffdbd1] text-[#862201]",
   },
   cloudy: {
+    Icon: Cloud,
     label: "Cloudy",
     message: "Neutral condition",
     sub: "Weather is not a major travel factor.",
-    bg: "bg-gray-50 border-gray-200 text-gray-700",
+    tone: "border-[#bccabf] bg-[#f5f3f3] text-[#303031]",
   },
-};
+} satisfies Record<
+  WeatherState,
+  {
+    Icon: typeof SunMedium;
+    label: string;
+    message: string;
+    sub: string;
+    tone: string;
+  }
+>;
 
 function mapOpenWeather(id: number): WeatherState {
   if (id >= 200 && id < 700) return "rainy";
@@ -114,22 +124,46 @@ export default function WeatherBanner({ city = "Manila" }: { city?: string }) {
 
   const config = WEATHER_CONFIG[weather.state];
   const temperature =
-    weather.temperature === null ? "" : ` - ${weather.temperature} C`;
+    weather.temperature === null ? null : `${weather.temperature} C`;
 
   return (
-    <div
-      className={`border rounded-xl px-4 py-3 flex items-center gap-3 mb-4 ${config.bg}`}
-    >
-      <span className="text-xs font-bold uppercase tracking-wide">
-        {config.label}
-      </span>
-      <div>
-        <p className="font-semibold text-sm">{config.message}</p>
-        <p className="text-xs opacity-75">
-          {weather.location}
-          {temperature} - {config.sub}
-        </p>
+    <section className="rounded-2xl border border-[#e3e2e2] bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase text-[#6d7a71]">
+            Travel context
+          </p>
+          <p className="mt-1 text-sm font-medium text-[#3d4a42]">
+            Weather only helps decide when to go
+          </p>
+        </div>
+        <div
+          className={`flex size-12 items-center justify-center rounded-xl border ${config.tone}`}
+        >
+          <config.Icon className="size-6" />
+        </div>
       </div>
-    </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase ${config.tone}`}>
+              {config.label}
+            </span>
+            {temperature && (
+              <span className="text-xs font-bold uppercase text-[#6d7a71]">
+                {temperature}
+              </span>
+            )}
+          </div>
+          <p className="text-3xl font-extrabold text-[#1b1c1c]">
+            {config.message}
+          </p>
+          <p className="mt-2 max-w-md text-sm font-medium leading-5 text-[#3d4a42]">
+            {weather.location} - {config.sub}
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
