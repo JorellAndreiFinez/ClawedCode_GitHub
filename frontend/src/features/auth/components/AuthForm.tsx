@@ -88,30 +88,13 @@ function validateEmail(value: string, options?: { trustedOnly?: boolean }) {
   if (/\s/.test(normalized)) return "Email cannot contain spaces.";
   if (!emailPattern.test(normalized)) return "Enter a valid email address.";
   if (options?.trustedOnly && isTemporaryEmailDomain(domain)) {
-    return "Temporary email addresses are not allowed.";
+    return "Temporary emails are not allowed.";
   }
   if (options?.trustedOnly && !isTrustedEmailDomain(domain)) {
-    return "Use a trusted email provider or company email.";
+    return "Use a trusted email or company domain.";
   }
 
   return "";
-}
-
-function getSignupEmailRules(value: string) {
-  const normalized = value.trim().toLowerCase();
-  const domain = getEmailDomain(normalized);
-
-  return [
-    { label: "Valid email format", met: emailPattern.test(normalized) },
-    {
-      label: "Trusted provider or company domain",
-      met: isTrustedEmailDomain(domain),
-    },
-    {
-      label: "No temporary email",
-      met: Boolean(domain) && !isTemporaryEmailDomain(domain),
-    },
-  ];
 }
 
 function getPasswordRules(value: string) {
@@ -159,7 +142,6 @@ export default function AuthForm({ onLogin, onRegister }: Props) {
   const normalizedEmail = email.trim().toLowerCase();
   const loginEmailError = isLogin ? validateEmail(email) : "";
   const signupEmailError = !isLogin ? validateEmail(email, { trustedOnly: true }) : "";
-  const signupEmailRules = getSignupEmailRules(email);
   const passwordRules = getPasswordRules(password);
   const passwordError =
     !isLogin && password && passwordRules.some((rule) => !rule.met)
@@ -170,8 +152,7 @@ export default function AuthForm({ onLogin, onRegister }: Props) {
   const signupIdentityReady = Boolean(
     fullName.trim() &&
       normalizedEmail &&
-      !signupEmailError &&
-      signupEmailRules.every((rule) => rule.met),
+      !signupEmailError,
   );
   const signupPasswordReady = Boolean(
     password &&
@@ -479,21 +460,14 @@ export default function AuthForm({ onLogin, onRegister }: Props) {
                   />
                 </span>
                 {!isLogin && email ? (
-                  <div className="mt-3 grid gap-2 text-sm font-bold sm:grid-cols-2">
-                    {signupEmailRules.map((rule) => (
-                      <span
-                        key={rule.label}
-                        className={cn(
-                          "rounded-[8px] border px-3 py-2",
-                          rule.met
-                            ? "border-[#36b37e]/30 bg-[#eaf8f2] text-[#19714e]"
-                            : "border-[#c4beb8] bg-[#f7f6f5] text-[#8b8582]",
-                        )}
-                      >
-                        {rule.label}
-                      </span>
-                    ))}
-                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 text-sm font-bold",
+                      signupEmailError ? "text-[#bd3c18]" : "text-[#19714e]",
+                    )}
+                  >
+                    {signupEmailError || "Trusted email looks good."}
+                  </p>
                 ) : null}
               </label>
             ) : null}
