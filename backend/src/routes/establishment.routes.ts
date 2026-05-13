@@ -202,4 +202,101 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.put("/:id", async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    const {
+      name,
+      location,
+      work_email,
+      queue_capacity,
+      working_hours,
+      stations,
+    } = req.body;
+
+    const estRef = dbAdmin.ref(`establishments/${id}`);
+    const estSnap = await estRef.once("value");
+    const establishment = estSnap.val();
+
+    if (!establishment) {
+      return res.status(404).json({ error: "Establishment not found" });
+    }
+
+    // ensure owner
+    if (establishment.admin_id !== user.uid) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const now = Date.now();
+
+    /**
+     * UPDATE ESTABLISHMENT
+     */
+    const updates: any = {
+      updated_at: now,
+    };
+
+    if (name !== undefined) updates.name = name;
+    if (location !== undefined) updates.location = location;
+    if (work_email !== undefined) updates.work_email = work_email;
+    if (queue_capacity !== undefined) updates.queue_capacity = queue_capacity;
+    if (working_hours !== undefined) updates.working_hours = working_hours;
+
+    await estRef.update(updates);
+
+    /**
+     * SYNC QUEUE (important)
+     */
+    const queueId = establishment.queue_id;
+    if (queueId) {
+      const queueRef = dbAdmin.ref(`queues/${queueId}`);
+
+      const queueSnap = await queueRef.once("value");
+      const queue = queueSnap.val();
+
+      const queueUpdates: any = {};
+
+      if (queue_capacity !== undefined) {
+        queueUpdates["settings/max_capacity"] = queue_capacity;
+      }
+
+      /**
+       * OPTIONAL: sync stations if provided
+       */
+      if (stations) {
+        const stationMap: Record<string, any> = {};
+
+        stations.forEach((s: any, index: number) => {
+          const stationId = s.id || `station_${index + 1}`;
+
+          stationMap[stationId] = {
+            id: stationId,
+            name: s.name || `Station ${index + 1}`,
+            service_type: s.service_type || "regular",
+            status: s.status || "active",
+            created_at: now,
+          };
+        });
+
+        queueUpdates["stations"] = stationMap;
+      }
+
+      if (Object.keys(queueUpdates).length > 0) {
+        await queueRef.update(queueUpdates);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "Establishment updated successfully",
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err.message || "Failed to update establishment",
+    });
+  }
+});
+
 export default router;

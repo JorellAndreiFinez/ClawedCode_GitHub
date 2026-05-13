@@ -44,10 +44,9 @@ export default function SetupEstablishment() {
       setLoading(true);
       await createEstablishment(form);
 
-      navigate("/admin", {
-        replace: true,
-        state: { establishmentCreated: true },
-      });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      window.location.replace("/admin");
     } catch (err: any) {
       toast.error(err.message || "Failed to create establishment");
     } finally {

@@ -18,7 +18,9 @@ export default function JoinQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [establishment, setEstablishment] = useState<Establishment | null>(null);
+  const [establishment, setEstablishment] = useState<Establishment | null>(
+    null,
+  );
   const [waitingCount, setWaitingCount] = useState(0);
   const [name, setName] = useState("");
   const [priority, setPriority] = useState<Priority>("none");
@@ -34,18 +36,32 @@ export default function JoinQueue() {
     });
 
     const queueUnsub = onValue(ref(db, `queues/${id}/users`), (snapshot) => {
-      if (!snapshot.exists()) { setWaitingCount(0); return; }
+      if (!snapshot.exists()) {
+        setWaitingCount(0);
+        return;
+      }
       const users = Object.values(snapshot.val()) as { status: string }[];
       setWaitingCount(
-        users.filter((u) => u.status === "waiting" || u.status === "serving" || u.status === "called").length
+        users.filter(
+          (u) =>
+            u.status === "waiting" ||
+            u.status === "serving" ||
+            u.status === "called",
+        ).length,
       );
     });
 
-    return () => { estUnsub(); queueUnsub(); };
+    return () => {
+      estUnsub();
+      queueUnsub();
+    };
   }, [id]);
 
   const handleJoin = async () => {
-    if (!name.trim()) { setError("Please enter your name."); return; }
+    if (!name.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
     if (!user || !id) return;
 
     setLoading(true);
@@ -64,6 +80,12 @@ export default function JoinQueue() {
       const position = waitingCount + 1;
       const serviceTime = establishment?.service_time || 3;
       const eta = (position - 1) * serviceTime;
+
+      if (establishment && waitingCount >= establishment.queue_capacity) {
+        setError("Queue is full. Please try again later.");
+        setLoading(false);
+        return;
+      }
 
       // Push new queue entry
       const entryRef = push(ref(db, `queues/${id}/users`));
@@ -122,7 +144,6 @@ export default function JoinQueue() {
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-4">
-
         {/* QUEUE SNAPSHOT */}
         <div className="bg-white border rounded-xl p-4 shadow-sm flex justify-between text-sm text-gray-600">
           <span>{waitingCount} people waiting</span>
@@ -131,7 +152,6 @@ export default function JoinQueue() {
 
         {/* FORM */}
         <div className="bg-white border rounded-xl p-4 shadow-sm space-y-4">
-
           {/* NAME */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -166,8 +186,12 @@ export default function JoinQueue() {
           {/* ON-SITE TOGGLE */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-700">I'm at the venue</p>
-              <p className="text-xs text-gray-400">Toggle if you're joining on-site</p>
+              <p className="text-sm font-medium text-gray-700">
+                I'm at the venue
+              </p>
+              <p className="text-xs text-gray-400">
+                Toggle if you're joining on-site
+              </p>
             </div>
             <button
               onClick={() => setIsOnSite(!isOnSite)}
