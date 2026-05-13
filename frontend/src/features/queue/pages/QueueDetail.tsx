@@ -68,7 +68,7 @@ type ActivityItem = {
 
 const LOGO_SRC = "/linea/linea-logo.png";
 const ACTIVE_STATUSES = new Set<QueueStatus>(["waiting", "called", "serving"]);
-const COOLDOWN_MS = 60 * 60 * 1000;
+const COOLDOWN_MS = 20 * 60 * 1000;
 
 function getName(email?: string | null) {
   if (!email) return "Guest";
@@ -670,7 +670,7 @@ export default function QueueDetail() {
                     <span>
                       Started {formatElapsed(cooldownStartedAt)}
                     </span>
-                    <span>60 mins total</span>
+                    <span>20 mins total</span>
                   </div>
                 </div>
               </article>
@@ -821,7 +821,7 @@ export default function QueueDetail() {
                     </div>
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-[#858583]">Cooldown</span>
-                      <span className="font-extrabold">1 hr</span>
+                      <span className="font-extrabold">20 mins</span>
                     </div>
                   </div>
                 </aside>
@@ -974,7 +974,7 @@ export default function QueueDetail() {
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-[#858583]">Cooldown</span>
-                    <span className="font-extrabold">1 hr</span>
+                    <span className="font-extrabold">20 mins</span>
                   </div>
                 </div>
               </aside>
@@ -1076,7 +1076,7 @@ export default function QueueDetail() {
               Are you sure you wanna leave the queue?
             </h2>
             <p className="mx-auto mt-6 max-w-md text-2xl font-medium leading-tight text-[#858583]">
-              You will not be able to join after 1 hr cooldown.
+              You will not be able to join after 20 mins cooldown.
             </p>
             <div className="mt-12 flex flex-col justify-center gap-6 sm:flex-row">
               <button
